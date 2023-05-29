@@ -330,7 +330,12 @@ parser new_parser(lexer *l) {
 
 void expression(parser *p) {
   (void)p;
-  return;
+  TTC_ABORT("TODO");
+}
+
+void comparison(parser *p) {
+  (void)p;
+  TTC_ABORT("TODO");
 }
 
 void newline(parser *p) {
@@ -352,6 +357,62 @@ void statement(parser *p) {
       } else {
         expression(p);
       }
+      break;
+
+    case IF_TOKEN:
+      printf("STATEMENT-IF\n");
+      next_token(p);
+      comparison(p);  // TODO
+
+      match(p, THEN_TOKEN);
+      newline(p);
+
+      while (p->cur_token.type != ENDIF_TOKEN) {
+        statement(p);
+      }
+
+      match(p, ENDIF_TOKEN);
+      break;
+
+    case WHILE_TOKEN:
+      printf("STATEMENT-WHILE\n");
+      next_token(p);
+      comparison(p);  // TODO
+
+      match(p, REPEAT_TOKEN);
+      newline(p);
+
+      while (p->cur_token.type != ENDWHILE_TOKEN) {
+        statement(p);
+      }
+
+      match(p, ENDWHILE_TOKEN);
+      break;
+
+    case LABEL_TOKEN:
+      printf("STATEMENT-LABEL\n");
+      next_token(p);
+      match(p, IDENT_TOKEN);
+      break;
+
+    case GOTO_TOKEN:
+      printf("STATEMENT-GOTO\n");
+      next_token(p);
+      match(p, IDENT_TOKEN);
+      break;
+
+    case LET_TOKEN:
+      printf("STATEMENT-LET\n");
+      next_token(p);
+      match(p, IDENT_TOKEN);
+      match(p, EQ_TOKEN);
+      expression(p);
+      break;
+
+    case INPUT_TOKEN:
+      printf("STATEMENT-INPUT\n");
+      next_token(p);
+      match(p, IDENT_TOKEN);
       break;
 
     default:
