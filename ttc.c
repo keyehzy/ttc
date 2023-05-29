@@ -299,6 +299,54 @@ token get_token(lexer *l) {
   return t;
 }
 
+struct emitter {
+  char *header;
+  unsigned int header_len;
+  unsigned int header_pos;
+
+  char *body;
+  unsigned int body_len;
+  unsigned int body_pos;
+};
+typedef struct emitter emitter;
+
+void emit_header(emitter *e, const char *str, unsigned int len) {
+  if (e->header_pos + len >= e->header_len) {
+    e->header_len = (e->header_len + len) * 2;
+    e->header = realloc(e->header, e->header_len);
+    TTC_ASSERT(e->header);
+  }
+  memcpy(e->header + e->header_pos, str, len);
+  e->header_pos += len;
+}
+
+void emit_body(emitter *e, const char *str, unsigned int len) {
+  if (e->body_pos + len >= e->body_len) {
+    e->body_len = (e->body_len + len) * 2;
+    e->body = realloc(e->body, e->body_len);
+    TTC_ASSERT(e->body);
+  }
+  memcpy(e->body + e->body_pos, str, len);
+  e->body_pos += len;
+}
+
+void emit_header_cstr(emitter *e, const char *str) {
+  emit_header(e, str, strlen(str));
+}
+
+void emit_body_cstr(emitter *e, const char *str) {
+  emit_body(e, str, strlen(str));
+}
+
+void emitter_write_to_file(emitter *e, FILE *f) {
+  if (!f) {
+    TTC_ABORT("Failed to open file for writing");
+  }
+  fwrite(e->header, 1, e->header_pos, f);
+  fwrite(e->body, 1, e->body_pos, f);
+  fclose(f);
+}
+
 struct token_set {
   token tokens[256];
   unsigned int len;
@@ -344,6 +392,8 @@ struct parser {
   token_set symbols;
   token_set labels;
   token_set gotoes;
+
+  emitter e;
 };
 typedef struct parser parser;
 
@@ -371,14 +421,14 @@ parser new_parser(lexer *l) {
 }
 
 void primary(parser *p) {
-  printf("PRIMARY (%.*s)\n", p->cur_token.len, p->cur_token.start);
-
   if (check(p, NUMBER_TOKEN)) {
+    emit_body(&p->e, p->cur_token.start, p->cur_token.len);
     next_token(p);
   } else if (check(p, IDENT_TOKEN)) {
     if (!token_set_contains(&p->symbols, p->cur_token)) {
       TTC_ABORT("Reference to undeclared variable");
     }
+    emit_body(&p->e, p->cur_token.start, p->cur_token.len);
     next_token(p);
   } else {
     TTC_ABORT("Unexpected token");
@@ -386,29 +436,26 @@ void primary(parser *p) {
 }
 
 void unary(parser *p) {
-  printf("UNARY\n");
   if (check(p, PLUS_TOKEN) || check(p, MINUS_TOKEN)) {
+    emit_body(&p->e, p->cur_token.start, p->cur_token.len);
     next_token(p);
   }
   primary(p);
 }
 
 void term(parser *p) {
-  printf("TERM\n");
-
   unary(p);
   while (check(p, ASTERISK_TOKEN) || check(p, SLASH_TOKEN)) {
+    emit_body(&p->e, p->cur_token.start, p->cur_token.len);
     next_token(p);
     unary(p);
   }
 }
 
 void expression(parser *p) {
-  printf("EXPRESSION\n");
-
   term(p);
-
   while (check(p, PLUS_TOKEN) || check(p, MINUS_TOKEN)) {
+    emit_body(&p->e, p->cur_token.start, p->cur_token.len);
     next_token(p);
     term(p);
   }
@@ -421,10 +468,10 @@ int check_if_comparsion(parser *p) {
 }
 
 void comparison(parser *p) {
-  printf("COMPARISON\n");
   expression(p);
 
   if (check_if_comparsion(p)) {
+    emit_body(&p->e,p->cur_token.start, p->cur_token.len);
     next_token(p);
     expression(p);
   } else {
@@ -432,13 +479,13 @@ void comparison(parser *p) {
   }
 
   while (check_if_comparsion(p)) {
+    emit_body(&p->e,p->cur_token.start, p->cur_token.len);
     next_token(p);
     expression(p);
   }
 }
 
 void newline(parser *p) {
-  printf("NEWLINE\n");
   match(p, NEWLINE_TOKEN);
   while (check(p, NEWLINE_TOKEN)) {
     next_token(p);
@@ -448,83 +495,110 @@ void newline(parser *p) {
 void statement(parser *p) {
   switch (p->cur_token.type) {
     case PRINT_TOKEN:
-      printf("STATEMENT-PRINT\n");
       next_token(p);
 
       if (check(p, STRING_TOKEN)) {
+        emit_body_cstr(&p->e, "printf(");
+        emit_body(&p->e, p->cur_token.start, p->cur_token.len);
+        emit_body_cstr(&p->e, ");");
         next_token(p);
       } else {
+        emit_body_cstr(&p->e, "printf(\"%.2f\\n\", (float)(");
         expression(p);
+        emit_body_cstr(&p->e, "));");
       }
       break;
 
     case IF_TOKEN:
-      printf("STATEMENT-IF\n");
       next_token(p);
-      comparison(p);  // TODO
+      emit_body_cstr(&p->e, "if (");
+      comparison(p);
 
       match(p, THEN_TOKEN);
       newline(p);
+      emit_body_cstr(&p->e, "){");
 
       while (p->cur_token.type != ENDIF_TOKEN) {
         statement(p);
       }
 
       match(p, ENDIF_TOKEN);
+      emit_body_cstr(&p->e, "}");
       break;
 
     case WHILE_TOKEN:
-      printf("STATEMENT-WHILE\n");
       next_token(p);
-      comparison(p);  // TODO
+      emit_body_cstr(&p->e, "while (");
+      comparison(p);
 
       match(p, REPEAT_TOKEN);
       newline(p);
+      emit_body_cstr(&p->e, "){");
 
       while (p->cur_token.type != ENDWHILE_TOKEN) {
         statement(p);
       }
 
       match(p, ENDWHILE_TOKEN);
+      emit_body_cstr(&p->e, "}");
       break;
 
     case LABEL_TOKEN:
-      printf("STATEMENT-LABEL\n");
       next_token(p);
       if (token_set_contains(&p->labels, p->cur_token)) {
         TTC_ABORT("Label already defined");
       }
       token_set_add(&p->labels, p->cur_token);
+      emit_body(&p->e, p->cur_token.start, p->cur_token.len);
+      emit_body_cstr(&p->e, ":");
       match(p, IDENT_TOKEN);
       break;
 
     case GOTO_TOKEN:
-      printf("STATEMENT-GOTO\n");
       next_token(p);
       token_set_add(&p->gotoes, p->cur_token);
+      emit_body_cstr(&p->e, "goto ");
+      emit_body(&p->e, p->cur_token.start, p->cur_token.len);
+      emit_body_cstr(&p->e, ";");
       match(p, IDENT_TOKEN);
       break;
 
     case LET_TOKEN:
-      printf("STATEMENT-LET\n");
       next_token(p);
 
       if (!token_set_contains(&p->symbols, p->cur_token)) {
         token_set_add(&p->symbols, p->cur_token);
+        emit_header_cstr(&p->e, "float ");
+        emit_header(&p->e, p->cur_token.start, p->cur_token.len);
+        emit_header_cstr(&p->e, ";");
       }
+
+      emit_body(&p->e, p->cur_token.start, p->cur_token.len);
+      emit_body_cstr(&p->e, "=");
 
       match(p, IDENT_TOKEN);
       match(p, EQ_TOKEN);
       expression(p);
+      emit_body_cstr(&p->e, ";");
       break;
 
     case INPUT_TOKEN:
-      printf("STATEMENT-INPUT\n");
       next_token(p);
 
       if (!token_set_contains(&p->symbols, p->cur_token)) {
         token_set_add(&p->symbols, p->cur_token);
+        emit_header_cstr(&p->e, "float ");
+        emit_header(&p->e, p->cur_token.start, p->cur_token.len);
+        emit_header_cstr(&p->e, ";");
       }
+
+      emit_body_cstr(&p->e, "if (0 == scanf(\"%f\", &");
+      emit_body(&p->e, p->cur_token.start, p->cur_token.len);
+      emit_body_cstr(&p->e, ")) {");
+      emit_body(&p->e, p->cur_token.start, p->cur_token.len);
+      emit_body_cstr(&p->e, "=0;");
+      emit_body_cstr(&p->e, "scanf(\"%*s\");");
+      emit_body_cstr(&p->e, "}");
 
       match(p, IDENT_TOKEN);
       break;
@@ -537,7 +611,8 @@ void statement(parser *p) {
 }
 
 void program(parser *p) {
-  printf("PROGRAM\n");
+  emit_header_cstr(&p->e, "#include <stdio.h>\n");
+  emit_body_cstr(&p->e, "int main(void) {");
 
   while (check(p, NEWLINE_TOKEN)) {
     next_token(p);
@@ -546,6 +621,8 @@ void program(parser *p) {
   while (p->cur_token.type != EOF_TOKEN) {
     statement(p);
   }
+
+  emit_body_cstr(&p->e, "return 0;}\n");
 
   TTC_ASSERT(token_set_equals(&p->gotoes, &p->labels));
 }
@@ -573,5 +650,6 @@ int main(int argc, char **argv) {
   parser p = new_parser(&l);
   program(&p);
 
+  emitter_write_to_file(&p.e, stdout);
   return 0;
 }
