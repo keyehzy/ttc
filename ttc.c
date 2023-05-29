@@ -15,18 +15,73 @@ void abort_(const char *message, const char *file, int line) {
 #define ENUMERATE_NUMBERS(O) \
   O('0') O('1') O('2') O('3') O('4') O('5') O('6') O('7') O('8') O('9')
 
+#define ENUMERATE_ALPHA(O) \
+  O('a')                   \
+  O('b')                   \
+  O('c')                   \
+  O('d')                   \
+  O('e')                   \
+  O('f')                   \
+  O('g')                   \
+  O('h')                   \
+  O('i')                   \
+  O('j')                   \
+  O('k')                   \
+  O('l')                   \
+  O('m')                   \
+  O('n')                   \
+  O('o')                   \
+  O('p')                   \
+  O('q')                   \
+  O('r')                   \
+  O('s')                   \
+  O('t')                   \
+  O('u')                   \
+  O('v')                   \
+  O('w')                   \
+  O('x')                   \
+  O('y')                   \
+  O('z')                   \
+  O('A')                   \
+  O('B')                   \
+  O('C')                   \
+  O('D')                   \
+  O('E')                   \
+  O('F')                   \
+  O('G')                   \
+  O('H')                   \
+  O('I')                   \
+  O('J')                   \
+  O('K')                   \
+  O('L')                   \
+  O('M')                   \
+  O('N')                   \
+  O('O')                   \
+  O('P')                   \
+  O('Q')                   \
+  O('R')                   \
+  O('S')                   \
+  O('T')                   \
+  O('U')                   \
+  O('V')                   \
+  O('W')                   \
+  O('X')                   \
+  O('Y')                   \
+  O('Z')
+
 #define CASE(x) case x:
 #define CASE_NUMBERS ENUMERATE_NUMBERS(CASE)
+#define CASE_ALPHA ENUMERATE_ALPHA(CASE)
 
 enum token_type {
-  EOF_TOKEN,
+  EOF_TOKEN = 0,
   NEWLINE_TOKEN,
   NUMBER_TOKEN,
   IDENT_TOKEN,
   STRING_TOKEN,
 
   // KEYWORDS
-  LABEL_TOKEN,
+  LABEL_TOKEN = 100,
   GOTO_TOKEN,
   PRINT_TOKEN,
   INPUT_TOKEN,
@@ -39,7 +94,7 @@ enum token_type {
   ENDWHILE_TOKEN,
 
   // OPERATORS
-  EQ_TOKEN,
+  EQ_TOKEN = 200,
   PLUS_TOKEN,
   MINUS_TOKEN,
   ASTERISK_TOKEN,
@@ -52,6 +107,11 @@ enum token_type {
   GTEQ_TOKEN,
 };
 typedef enum token_type token_type;
+
+const char *ttc_keywords[] = {
+    "LABEL", "GOTO",  "PRINT", "INPUT",  "LET",      "IF",
+    "THEN",  "ENDIF", "WHILE", "REPEAT", "ENDWHILE",
+};
 
 struct token {
   token_type type;
@@ -100,10 +160,20 @@ void skip_comment(lexer *l) {
   }
 }
 
+token_type check_if_keyword(const char *start, unsigned int len) {
+  for (unsigned int i = 0; i < sizeof(ttc_keywords) / sizeof(ttc_keywords[0]);
+       i++) {
+    if (strncmp(start, ttc_keywords[i], len) == 0) {
+      return (token_type)(LABEL_TOKEN + i);
+    }
+  }
+  return IDENT_TOKEN;
+}
+
 token get_token(lexer *l) {
   skip_whitespace(l);
   skip_comment(l);
-  token t = {EOF_TOKEN, l->input + l->pos, 1};
+  token t = {EOF_TOKEN, l->input + l->pos - 1, 1};
 
   switch (l->last) {
     case '\0':
@@ -188,7 +258,7 @@ token get_token(lexer *l) {
         }
       }
       skip(l);
-      t.len = l->input + l->pos - t.start;
+      t.len = l->input + l->pos - 1 - t.start;
       break;
 
       CASE_NUMBERS
@@ -205,7 +275,15 @@ token get_token(lexer *l) {
           skip(l);
         }
       }
-      t.len = l->input + l->pos - t.start;
+      t.len = l->input + l->pos - 1 - t.start;
+      break;
+
+      CASE_ALPHA
+      while (isalnum(peek(l))) {
+        skip(l);
+      }
+      t.len = l->input + l->pos - 1 - t.start;
+      t.type = check_if_keyword(t.start, t.len);
       break;
 
     default:
@@ -215,7 +293,7 @@ token get_token(lexer *l) {
 }
 
 int main(void) {
-  lexer l = new_lexer("+- 123 9.8654 */");
+  lexer l = new_lexer("+- foo LABEL \"bar\" 123 9.8654 */");
   token t = get_token(&l);
 
   while (t.type != EOF_TOKEN) {
