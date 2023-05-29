@@ -1,5 +1,15 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+
+void abort_(const char *message, const char *file, int line) {
+  fprintf(stderr, "%s:%d: %s\n", file, line, message);
+  exit(1);
+}
+
+#define TTC_ABORT(message) abort_(message, __FILE__, __LINE__)
+#define TTC_ASSERT(expr) \
+  if (!(expr)) TTC_ABORT("Assertion failed: " #expr)
 
 enum token_type {
   EOF_TOKEN,
@@ -147,15 +157,30 @@ token get_token(lexer *l) {
         t.len = 2;
         skip(l);
       } else {
-        t.type = EOF_TOKEN;
+        TTC_ABORT("Expected '=' after '!'");
       }
       break;
+    case '"':
+      t.type = STRING_TOKEN;
+      skip(l);
+      while (l->last != '"') {
+        skip(l);
+        if (peek(l) == '\n' || peek(l) == '\r' || peek(l) == '\t' ||
+            peek(l) == '\\' || peek(l) == '%') {
+          TTC_ABORT("Invalid character in string");
+        }
+      }
+      skip(l);
+      t.len = l->input + l->pos - t.start;
+      break;
+    default:
+      TTC_ABORT("Unknown token");
   }
   return t;
 }
 
 int main(void) {
-  lexer l = new_lexer("+- # This is a commentary\n*/");
+  lexer l = new_lexer("+- \"Hello world!\" # This is a commentary\n*/");
   token t = get_token(&l);
 
   while (t.type != EOF_TOKEN) {
