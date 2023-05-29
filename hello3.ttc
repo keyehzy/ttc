@@ -1,0 +1,3 @@
+PRINT "hello, world!"
+PRINT "second line"
+PRINT "and a third..."

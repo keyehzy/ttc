@@ -5,7 +5,7 @@
 
 void abort_(const char *message, const char *file, int line) {
   fprintf(stderr, "%s:%d: %s\n", file, line, message);
-  exit(1);
+  __builtin_trap();
 }
 
 #define TTC_ABORT(message) abort_(message, __FILE__, __LINE__)
@@ -137,21 +137,27 @@ void skip(lexer *l) {
 
 char peek(lexer *l) { return l->last; }
 
-lexer new_lexer(const char *input) {
+lexer new_lexer(const char *input, unsigned int len) {
+  lexer l = {input, len, 0, '\0'};
+  skip(&l);
+  return l;
+}
+
+lexer new_lexer_from_cstr(const char *input) {
   lexer l = {input, strlen(input), 0, '\0'};
   skip(&l);
   return l;
 }
 
 void skip_whitespace(lexer *l) {
-  while (l->last == ' ' || l->last == '\t' || l->last == '\r') {
+  while (peek(l) == ' ' || peek(l) == '\t' || peek(l) == '\r') {
     skip(l);
   }
 }
 
 void skip_comment(lexer *l) {
   if (peek(l) == '#') {
-    while (l->last != '\n') {
+    while (peek(l) != '\n') {
       skip(l);
     }
     // if (l->last == '\n') {
@@ -175,7 +181,7 @@ token get_token(lexer *l) {
   skip_comment(l);
   token t = {EOF_TOKEN, l->input + l->pos - 1, 1};
 
-  switch (l->last) {
+  switch (peek(l)) {
     case '\0':
       skip(l);
       t.type = EOF_TOKEN;
@@ -250,7 +256,7 @@ token get_token(lexer *l) {
     case '"':
       t.type = STRING_TOKEN;
       skip(l);
-      while (l->last != '"') {
+      while (peek(l) != '"') {
         skip(l);
         if (peek(l) == '\n' || peek(l) == '\r' || peek(l) == '\t' ||
             peek(l) == '\\' || peek(l) == '%') {
@@ -287,18 +293,103 @@ token get_token(lexer *l) {
       break;
 
     default:
-      TTC_ABORT("Unknown token");
+      // TTC_ABORT("Unknown token");
+      break;
   }
   return t;
 }
 
-int main(void) {
-  lexer l = new_lexer("+- foo LABEL \"bar\" 123 9.8654 */");
-  token t = get_token(&l);
+struct parser {
+  lexer *l;
+  token cur_token;
+  token next_token;
+};
+typedef struct parser parser;
 
-  while (t.type != EOF_TOKEN) {
-    printf("Token: %d\n", t.type);
-    t = get_token(&l);
+int check(parser *p, token_type type) { return p->cur_token.type == type; }
+
+void next_token(parser *p) {
+  p->cur_token = p->next_token;
+  p->next_token = get_token(p->l);
+}
+
+void match(parser *p, token_type type) {
+  if (p->cur_token.type == type) {
+    next_token(p);
+  } else {
+    TTC_ABORT("Expected token");
   }
+}
+
+parser new_parser(lexer *l) {
+  parser p = {l, {0}, {0}};
+  next_token(&p);
+  next_token(&p);
+  return p;
+}
+
+void expression(parser *p) {
+  (void)p;
+  return;
+}
+
+void newline(parser *p) {
+  printf("NEWLINE\n");
+  match(p, NEWLINE_TOKEN);
+  while (check(p, NEWLINE_TOKEN)) {
+    next_token(p);
+  }
+}
+
+void statement(parser *p) {
+  switch (p->cur_token.type) {
+    case PRINT_TOKEN:
+      printf("STATEMENT-PRINT\n");
+      next_token(p);
+
+      if (check(p, STRING_TOKEN)) {
+        next_token(p);
+      } else {
+        expression(p);
+      }
+      break;
+
+    default:
+      TTC_ABORT("Unknown statement");
+  }
+
+  newline(p);
+}
+
+void program(parser *p) {
+  printf("PROGRAM\n");
+  while (p->cur_token.type != EOF_TOKEN) {
+    statement(p);
+  }
+}
+
+int main(int argc, char **argv) {
+  if (argc != 2) {
+    TTC_ABORT("Expected one argument");
+  }
+
+  FILE *f = fopen(argv[1], "r");
+  if (!f) {
+    TTC_ABORT("Could not open file");
+  }
+
+  fseek(f, 0, SEEK_END);
+  size_t size = ftell(f);
+  fseek(f, 0, SEEK_SET);
+
+  char *input = malloc(size + 1);
+  fread(input, size, 1, f);
+  input[size] = '\0';
+  fclose(f);
+
+  lexer l = new_lexer(input, size);
+  parser p = new_parser(&l);
+  program(&p);
+
   return 0;
 }
