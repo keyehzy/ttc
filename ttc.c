@@ -299,10 +299,51 @@ token get_token(lexer *l) {
   return t;
 }
 
+struct token_set {
+  token tokens[256];
+  unsigned int len;
+};
+typedef struct token_set token_set;
+
+void token_set_add(token_set *s, token t) {
+  TTC_ASSERT(s->len < 256);
+  for (unsigned int i = 0; i < s->len; i++) {
+    if (!strncmp(s->tokens[i].start, t.start, t.len)) {
+      return;
+    }
+  }
+  s->tokens[s->len++] = t;
+}
+
+int token_set_contains(token_set *s, token t) {
+  for (unsigned int i = 0; i < s->len; i++) {
+    if (!strncmp(s->tokens[i].start, t.start, t.len)) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+int token_set_equals(token_set *a, token_set *b) {
+  if (a->len != b->len) {
+    return 0;
+  }
+  for (unsigned int i = 0; i < a->len; i++) {
+    if (!token_set_contains(b, a->tokens[i])) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 struct parser {
   lexer *l;
   token cur_token;
   token next_token;
+
+  token_set symbols;
+  token_set labels;
+  token_set gotoes;
 };
 typedef struct parser parser;
 
@@ -322,7 +363,8 @@ void match(parser *p, token_type type) {
 }
 
 parser new_parser(lexer *l) {
-  parser p = {l, {0}, {0}};
+  parser p = {0};
+  p.l = l;
   next_token(&p);
   next_token(&p);
   return p;
@@ -334,6 +376,9 @@ void primary(parser *p) {
   if (check(p, NUMBER_TOKEN)) {
     next_token(p);
   } else if (check(p, IDENT_TOKEN)) {
+    if (!token_set_contains(&p->symbols, p->cur_token)) {
+      TTC_ABORT("Reference to undeclared variable");
+    }
     next_token(p);
   } else {
     TTC_ABORT("Unexpected token");
@@ -446,18 +491,28 @@ void statement(parser *p) {
     case LABEL_TOKEN:
       printf("STATEMENT-LABEL\n");
       next_token(p);
+      if (token_set_contains(&p->labels, p->cur_token)) {
+        TTC_ABORT("Label already defined");
+      }
+      token_set_add(&p->labels, p->cur_token);
       match(p, IDENT_TOKEN);
       break;
 
     case GOTO_TOKEN:
       printf("STATEMENT-GOTO\n");
       next_token(p);
+      token_set_add(&p->gotoes, p->cur_token);
       match(p, IDENT_TOKEN);
       break;
 
     case LET_TOKEN:
       printf("STATEMENT-LET\n");
       next_token(p);
+
+      if (!token_set_contains(&p->symbols, p->cur_token)) {
+        token_set_add(&p->symbols, p->cur_token);
+      }
+
       match(p, IDENT_TOKEN);
       match(p, EQ_TOKEN);
       expression(p);
@@ -466,6 +521,11 @@ void statement(parser *p) {
     case INPUT_TOKEN:
       printf("STATEMENT-INPUT\n");
       next_token(p);
+
+      if (!token_set_contains(&p->symbols, p->cur_token)) {
+        token_set_add(&p->symbols, p->cur_token);
+      }
+
       match(p, IDENT_TOKEN);
       break;
 
@@ -478,9 +538,16 @@ void statement(parser *p) {
 
 void program(parser *p) {
   printf("PROGRAM\n");
+
+  while (check(p, NEWLINE_TOKEN)) {
+    next_token(p);
+  }
+
   while (p->cur_token.type != EOF_TOKEN) {
     statement(p);
   }
+
+  TTC_ASSERT(token_set_equals(&p->gotoes, &p->labels));
 }
 
 int main(int argc, char **argv) {

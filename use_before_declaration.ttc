@@ -1,0 +1,2 @@
+PRINT index
+GOTO main
