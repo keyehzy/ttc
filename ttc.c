@@ -66,12 +66,27 @@ lexer new_lexer(const char *input) {
   return l;
 }
 
-token get_token(lexer *l) {
-  token t = {EOF_TOKEN, l->input + l->pos, 1};
-
-  while (peek(l) == ' ' || peek(l) == '\t' || peek(l) == '\r') {
+void skip_whitespace(lexer *l) {
+  while (l->last == ' ' || l->last == '\t' || l->last == '\r') {
     skip(l);
   }
+}
+
+void skip_comment(lexer *l) {
+  if (peek(l) == '#') {
+    while (l->last != '\n') {
+      skip(l);
+    }
+    // if (l->last == '\n') {
+    //   skip(l);
+    // }
+  }
+}
+
+token get_token(lexer *l) {
+  skip_whitespace(l);
+  skip_comment(l);
+  token t = {EOF_TOKEN, l->input + l->pos, 1};
 
   switch (l->last) {
     case '\0':
@@ -140,7 +155,7 @@ token get_token(lexer *l) {
 }
 
 int main(void) {
-  lexer l = new_lexer("+- */ < <= > >= == !=\n");
+  lexer l = new_lexer("+- # This is a commentary\n*/");
   token t = get_token(&l);
 
   while (t.type != EOF_TOKEN) {
