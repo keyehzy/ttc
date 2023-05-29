@@ -1,3 +1,4 @@
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,12 @@ void abort_(const char *message, const char *file, int line) {
 #define TTC_ABORT(message) abort_(message, __FILE__, __LINE__)
 #define TTC_ASSERT(expr) \
   if (!(expr)) TTC_ABORT("Assertion failed: " #expr)
+
+#define ENUMERATE_NUMBERS(O) \
+  O('0') O('1') O('2') O('3') O('4') O('5') O('6') O('7') O('8') O('9')
+
+#define CASE(x) case x:
+#define CASE_NUMBERS ENUMERATE_NUMBERS(CASE)
 
 enum token_type {
   EOF_TOKEN,
@@ -103,26 +110,32 @@ token get_token(lexer *l) {
       skip(l);
       t.type = EOF_TOKEN;
       break;
+
     case '\n':
       t.type = NEWLINE_TOKEN;
       skip(l);
       break;
+
     case '+':
       t.type = PLUS_TOKEN;
       skip(l);
       break;
+
     case '-':
       t.type = MINUS_TOKEN;
       skip(l);
       break;
+
     case '*':
       t.type = ASTERISK_TOKEN;
       skip(l);
       break;
+
     case '/':
       t.type = SLASH_TOKEN;
       skip(l);
       break;
+
     case '=':
       t.type = EQ_TOKEN;
       skip(l);
@@ -132,6 +145,7 @@ token get_token(lexer *l) {
         skip(l);
       }
       break;
+
     case '>':
       t.type = GT_TOKEN;
       skip(l);
@@ -141,6 +155,7 @@ token get_token(lexer *l) {
         skip(l);
       }
       break;
+
     case '<':
       t.type = LT_TOKEN;
       skip(l);
@@ -150,6 +165,7 @@ token get_token(lexer *l) {
         skip(l);
       }
       break;
+
     case '!':
       skip(l);
       if (peek(l) == '=') {
@@ -160,6 +176,7 @@ token get_token(lexer *l) {
         TTC_ABORT("Expected '=' after '!'");
       }
       break;
+
     case '"':
       t.type = STRING_TOKEN;
       skip(l);
@@ -173,6 +190,24 @@ token get_token(lexer *l) {
       skip(l);
       t.len = l->input + l->pos - t.start;
       break;
+
+      CASE_NUMBERS
+      t.type = NUMBER_TOKEN;
+      while (isdigit(peek(l))) {
+        skip(l);
+      }
+      if (peek(l) == '.') {
+        skip(l);
+        if (!isdigit(peek(l))) {
+          TTC_ABORT("Expected digit after '.'");
+        }
+        while (isdigit(peek(l))) {
+          skip(l);
+        }
+      }
+      t.len = l->input + l->pos - t.start;
+      break;
+
     default:
       TTC_ABORT("Unknown token");
   }
@@ -180,7 +215,7 @@ token get_token(lexer *l) {
 }
 
 int main(void) {
-  lexer l = new_lexer("+- \"Hello world!\" # This is a commentary\n*/");
+  lexer l = new_lexer("+- 123 9.8654 */");
   token t = get_token(&l);
 
   while (t.type != EOF_TOKEN) {
