@@ -328,14 +328,68 @@ parser new_parser(lexer *l) {
   return p;
 }
 
+void primary(parser *p) {
+  printf("PRIMARY (%.*s)\n", p->cur_token.len, p->cur_token.start);
+
+  if (check(p, NUMBER_TOKEN)) {
+    next_token(p);
+  } else if (check(p, IDENT_TOKEN)) {
+    next_token(p);
+  } else {
+    TTC_ABORT("Unexpected token");
+  }
+}
+
+void unary(parser *p) {
+  printf("UNARY\n");
+  if (check(p, PLUS_TOKEN) || check(p, MINUS_TOKEN)) {
+    next_token(p);
+  }
+  primary(p);
+}
+
+void term(parser *p) {
+  printf("TERM\n");
+
+  unary(p);
+  while (check(p, ASTERISK_TOKEN) || check(p, SLASH_TOKEN)) {
+    next_token(p);
+    unary(p);
+  }
+}
+
 void expression(parser *p) {
-  (void)p;
-  TTC_ABORT("TODO");
+  printf("EXPRESSION\n");
+
+  term(p);
+
+  while (check(p, PLUS_TOKEN) || check(p, MINUS_TOKEN)) {
+    next_token(p);
+    term(p);
+  }
+}
+
+int check_if_comparsion(parser *p) {
+  token_type t = p->cur_token.type;
+  return t == EQEQ_TOKEN || t == NOTEQ_TOKEN || t == GT_TOKEN ||
+         t == GTEQ_TOKEN || t == LT_TOKEN || t == LTEQ_TOKEN;
 }
 
 void comparison(parser *p) {
-  (void)p;
-  TTC_ABORT("TODO");
+  printf("COMPARISON\n");
+  expression(p);
+
+  if (check_if_comparsion(p)) {
+    next_token(p);
+    expression(p);
+  } else {
+    TTC_ABORT("Expected comparison operator");
+  }
+
+  while (check_if_comparsion(p)) {
+    next_token(p);
+    expression(p);
+  }
 }
 
 void newline(parser *p) {
